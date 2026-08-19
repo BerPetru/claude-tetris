@@ -1,0 +1,102 @@
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  triage:
+    if: |
+      github.event.issue.user.type != 'Bot' &&
+      !contains(github.event.issue.body, '@claude') &&
+      !contains(github.event.issue.title, '@claude')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Issue Triage
+        id: claude-triage
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--allowedTools "Read,Grep,Glob,Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh label list)" --max-turns 20'
+          prompt: |
+            Eres un asistente de triage de issues para el repo de un juego de Tetris en
+            JavaScript vanilla (game.js, index.html, style.css; arquitectura documentada
+            en CLAUDE.md). Tu tarea es analizar el issue #${{ github.event.issue.number }}
+            y producir dos resultados: (1) labels aplicadas y (2) un comentario de
+            diagnóstico técnico. NO modifiques archivos del repo, NO abras PRs, NO cierres
+            el issue, NO hagas commits.
+
+            Pasos:
+
+            1. Lee el issue con `gh issue view ${{ github.event.issue.number }} --json title,body,labels,author`.
+
+            2. Lee CLAUDE.md para entender la arquitectura (board model, PIECES, rotateCW,
+               collide, tryRotate/wall kicks, loop, clearLines, scoring, leveling,
+               ghost piece, spawn/endGame). Luego usa Grep/Read sobre game.js, index.html
+               y style.css para localizar las funciones y líneas concretas relevantes al
+               issue. No leas archivos completos si con Grep basta para ubicar lo que
+               necesitas citar.
+
+            3. Elige labels EXCLUSIVAMENTE de esta lista cerrada (no crees labels nuevas):
+               - bug: algo no funciona como debería
+               - enhancement: nueva funcionalidad o mejora
+               - documentation: mejoras o adiciones a documentación
+               - question: se pide información, no hay cambio de código claro
+               - accessibility: barrera para personas con discapacidad
+               - duplicate: este issue o PR ya existe
+               - invalid: esto no parece correcto/aplicable
+               - wontfix: no se va a trabajar
+               - good first issue: bueno para principiantes
+               - help wanted: se necesita atención extra
+               Aplica solo las que correspondan claramente (normalmente 1-3). No quites
+               labels que ya haya puesto una persona. Aplica con:
+               `gh issue edit ${{ github.event.issue.number }} --add-label "nombre-label"`
+               (una invocación por label, o varias separadas por coma en una sola).
+
+            4. Publica el diagnóstico como comentario de tu turno (usa la herramienta de
+               comentario de seguimiento de este action; no crees comentarios adicionales
+               con `gh issue comment`). Escribe en el mismo idioma en que está redactado
+               el issue. Usa exactamente esta estructura markdown:
+
+               ## 🔍 Diagnóstico automático
+               <!-- claude-triage -->
+
+               **Resumen:** 1-2 frases de qué pide o reporta el issue.
+
+               **Tipo y labels aplicadas:** clasificación y por qué se aplicaron esas labels.
+
+               **Causa raíz probable** (si es un bug) o **Punto de integración** (si es una
+               mejora): explicación con referencias reales `archivo:línea` verificadas
+               leyendo el código — nunca inventadas.
+
+               **Archivos y funciones a modificar:** lista concreta de archivos/funciones.
+
+               **Enfoque propuesto:** 3-6 pasos concretos para implementar la solución.
+
+               **Riesgos y efectos colaterales:** por ejemplo, cambiar COLS/ROWS/BLOCK
+               obliga a actualizar las dimensiones del `<canvas id="board">` en
+               index.html; tocar clearLines afecta el scoring; tocar tryRotate afecta los
+               wall kicks. Menciona solo los riesgos relevantes al issue concreto.
+
+               **Criterios de aceptación:** checklist verificable manualmente en el
+               navegador (el repo no tiene tests automatizados ni build).
+
+               **Confianza:** alta / media / baja. Si es baja o media, enumera qué
+               información falta o qué preguntas habría que responder antes de
+               implementar, en vez de especular.
+
+               Si el issue es demasiado vago para diagnosticar con confianza, dilo
+               explícitamente en la sección de Confianza y limita el resto de las
+               secciones a lo que sí se puede afirmar con el código actual.
