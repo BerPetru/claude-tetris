@@ -36,7 +36,9 @@ jobs:
             en CLAUDE.md). Tu tarea es analizar el issue #${{ github.event.issue.number }}
             y producir dos resultados: (1) labels aplicadas y (2) un comentario de
             diagnóstico técnico. NO modifiques archivos del repo, NO abras PRs, NO cierres
-            el issue, NO hagas commits.
+            el issue, NO hagas commits. El comentario debe estar escrito en formato
+            Markdown válido y compatible con el renderizado de GitHub (encabezados,
+            listas, negritas, bloques de código con \`archivo:línea\`, etc.).
 
             Pasos:
 
