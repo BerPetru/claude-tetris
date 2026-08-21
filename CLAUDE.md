@@ -22,8 +22,8 @@ There are no build, lint, or test commands — this project has none configured.
 
 Everything lives in one file with module-level mutable state (`board`, `current`, `next`, `score`, `lines`, `level`, `paused`, `gameOver`, `dropInterval`, etc.) — no classes, no modules.
 
-- **Board model**: `ROWS × COLS` matrix; each cell is `0` (empty) or a color index `1–7` identifying which piece locked there.
-- **Pieces**: defined as square matrices in `PIECES`. Rotation is done via `rotateCW` (transpose + reverse), not by storing pre-rotated states.
+- **Board model**: `ROWS × COLS` matrix; each cell is `0` (empty) or a color index `1–8` identifying which piece locked there.
+- **Pieces**: defined as square matrices in `PIECES`. Rotation is done via `rotateCW` (transpose + reverse), not by storing pre-rotated states. Index 8 is the "Nut" — a non-standard 3×3 piece (`NUT` constant) with an empty center cell, included in the uniform 1-in-8 spawn draw (`randomPiece`) from the start of the game. Its center hole is drawn as a ring (`drawNutHole`) only while the piece is in flight (current piece, ghost, and next-preview); once locked the hole is just an ordinary empty board cell.
 - **Collision** (`collide`): checks board bounds and overlap with locked cells.
 - **Wall kicks** (`tryRotate`): after rotating, tries x-offsets `[0, -1, 1, -2, 2]` until one doesn't collide, else the rotation is discarded.
 - **Game loop** (`loop`): driven by `requestAnimationFrame`, accumulates elapsed time in `dropAccum` and drops the piece one row once `dropInterval` is exceeded, otherwise locks it (`lockPiece` → `merge` + `clearLines` + `spawn`).
