@@ -181,6 +181,42 @@ body {
   border-radius: 4px;
 }
 
+/* ---- Power-ups ---- */
+.value-small {
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.power-legend {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--controls-color);
+}
+
+.power-legend-hint {
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.power-active {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--value-color);
+  background: var(--kbd-bg);
+  border: 1px solid var(--kbd-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  text-align: center;
+}
+
+.power-active.hidden {
+  display: none;
+}
+
 /* ---- Controles ---- */
 .controls ul {
   list-style: none;
