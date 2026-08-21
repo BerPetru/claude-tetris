@@ -16,6 +16,10 @@ const COLORS = [
   '#78909c', // Nut - steel gray
   '#616161', // power-up block - neutral gray (overdrawn with its own color)
   '#f5f5f5', // wildcard - pearl white
+  '#f06292', // Plus pentomino - pink
+  '#a1887f', // U pentomino - brown
+  '#7986cb', // Y pentomino - indigo
+  '#fff176', // Single (post-Tetris reward) - bright gold
 ];
 
 const PIECES = [
@@ -28,11 +32,30 @@ const PIECES = [
   [[6,0,0],[6,6,6],[0,0,0]],                  // J
   [[0,0,7],[7,7,7],[0,0,0]],                  // L
   [[8,8,8],[8,0,8],[8,8,8]],                  // Nut (tuerca)
+  null,                                        // 9  POWERUP - shape generated in randomPiece()
+  null,                                        // 10 WILD - board-only cell, never spawned
+  [[0,11,0],[11,11,11],[0,11,0]],             // 11 Plus pentomino
+  [[12,0,12],[12,12,12]],                     // 12 U pentomino
+  [[0,13],[13,13],[0,13],[0,13]],             // 13 Y pentomino
+  [[14]],                                     // 14 Single (post-Tetris reward)
 ];
 
 const NUT = 8;
 const POWERUP = 9;   // cell value while the power-up block is in flight; never merged onto the board
 const WILD = 10;     // wildcard cell created by the Tinte power-up; lives on the board
+const PLUS = 11;
+const U_PIECE = 12;
+const Y_PIECE = 13;
+const SINGLE_PIECE = 14; // 1x1 reward piece, granted after a Tetris; never part of the random draw
+
+// Weighted spawn table for randomPiece(). SINGLE_PIECE is deliberately absent —
+// it's only ever granted as a post-Tetris reward, never drawn at random.
+const SPAWN_WEIGHTS = [
+  [1, 10], [2, 10], [3, 10], [4, 10], [5, 10], [6, 10], [7, 10], // tetrominoes
+  [NUT, 3],                                                       // Nut (rare challenge piece)
+  [PLUS, 2], [U_PIECE, 2], [Y_PIECE, 2],                          // pentominoes
+];
+const SPAWN_TOTAL = SPAWN_WEIGHTS.reduce((sum, [, w]) => sum + w, 0);
 
 const POWERUP_LINES = 3;   // a power-up charges after this many cleared lines...
 const POWERUP_PIECES = 12; // ...or this many placed pieces, whichever comes first
@@ -90,10 +113,24 @@ themeSwitch.addEventListener('change', () => {
 initTheme();
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
-let powerUpPending, linesToPower, piecesToPower, freezeLeft, activePower;
+let powerUpPending, singlePending, linesToPower, piecesToPower, freezeLeft, activePower;
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
+}
+
+function makePiece(type) {
+  const shape = PIECES[type].map(row => [...row]);
+  return { type, shape, x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2), y: 0 };
+}
+
+function weightedType() {
+  let roll = Math.random() * SPAWN_TOTAL;
+  for (const [type, weight] of SPAWN_WEIGHTS) {
+    if (roll < weight) return type;
+    roll -= weight;
+  }
+  return SPAWN_WEIGHTS[SPAWN_WEIGHTS.length - 1][0]; // fallback for float rounding
 }
 
 function randomPiece() {
@@ -102,9 +139,11 @@ function randomPiece() {
     const power = POWER_KEYS[Math.floor(Math.random() * POWER_KEYS.length)];
     return { type: POWERUP, power, shape: [[POWERUP]], x: Math.floor(COLS / 2), y: 0 };
   }
-  const type = Math.floor(Math.random() * 8) + 1;
-  const shape = PIECES[type].map(row => [...row]);
-  return { type, shape, x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2), y: 0 };
+  if (singlePending) {
+    singlePending = false;
+    return makePiece(SINGLE_PIECE);
+  }
+  return makePiece(weightedType());
 }
 
 function collide(shape, ox, oy) {
@@ -183,10 +222,12 @@ function applyGravity() {
 
 function resolveBoard() {
   let total = 0;
+  let tetris = false;
   while (true) {
     const { cleared, wildHit } = clearFullRows();
     if (!cleared) break;
     total += cleared;
+    if (cleared >= 4) tetris = true;
     score += (LINE_SCORES[Math.min(cleared, 4)] || 0) * level;
     if (!wildHit) break; // a plain splice can't create new full rows on its own
     purgeWild();
@@ -197,7 +238,7 @@ function resolveBoard() {
     level = Math.floor(lines / 10) + 1;
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
   }
-  return total;
+  return { total, tetris };
 }
 
 // Charges the power-up meter along both axes at once and resets them together
@@ -233,16 +274,20 @@ function blastCross(cx, cy) {
   score += destroyed * 10 * level;
 }
 
+function isPieceCell(v) {
+  return v >= 1 && v <= COLORS.length - 1 && v !== POWERUP && v !== WILD;
+}
+
 function dyeWildcards() {
   const counts = new Array(COLORS.length).fill(0);
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++) {
       const v = board[r][c];
-      if (v >= 1 && v <= 8) counts[v]++;
+      if (isPieceCell(v)) counts[v]++;
     }
   let bestColor = 0, bestCount = 0;
-  for (let v = 1; v <= 8; v++) {
-    if (counts[v] > bestCount) { bestCount = counts[v]; bestColor = v; }
+  for (let v = 1; v < COLORS.length; v++) {
+    if (isPieceCell(v) && counts[v] > bestCount) { bestCount = counts[v]; bestColor = v; }
   }
   if (!bestColor) return;
   let turned = 0;
@@ -293,7 +338,8 @@ function lockPiece() {
   } else {
     merge();
   }
-  const cleared = resolveBoard();
+  const { total: cleared, tetris } = resolveBoard();
+  if (tetris) singlePending = true;
   chargePowerUp(cleared, wasPower ? 0 : 1);
   updateHUD();
   spawn();
@@ -511,6 +557,7 @@ function init() {
   dropAccum = 0;
   lastTime = performance.now();
   powerUpPending = false;
+  singlePending = false;
   linesToPower = POWERUP_LINES;
   piecesToPower = POWERUP_PIECES;
   freezeLeft = 0;
