@@ -115,8 +115,16 @@ const skinSelect = document.getElementById('skin-select');
 const powerNextEl = document.getElementById('power-next');
 const powerActiveEl = document.getElementById('power-active');
 const powerLegendEl = document.getElementById('power-legend');
+const pauseMenu = document.getElementById('pause-menu');
+const resumeBtn = document.getElementById('resume-btn');
+const restartPauseBtn = document.getElementById('restart-pause-btn');
+const controlsToggleBtn = document.getElementById('controls-toggle-btn');
+const pauseControlsEl = document.getElementById('pause-controls');
+const startLevelSelect = document.getElementById('start-level-select');
 
 const THEME_KEY = 'tetris-theme';
+const START_LEVEL_KEY = 'tetris-start-level';
+const MAX_START_LEVEL = 15;
 
 function getGridColor() {
   return getComputedStyle(document.body).getPropertyValue('--grid-line').trim();
@@ -140,7 +148,28 @@ themeSwitch.addEventListener('change', () => {
 
 initTheme();
 
-let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+function getStartLevel() {
+  const saved = parseInt(localStorage.getItem(START_LEVEL_KEY), 10);
+  return saved >= 1 && saved <= MAX_START_LEVEL ? saved : 1;
+}
+
+function initStartLevelSelect() {
+  for (let lvl = 1; lvl <= MAX_START_LEVEL; lvl++) {
+    const opt = document.createElement('option');
+    opt.value = lvl;
+    opt.textContent = lvl;
+    startLevelSelect.appendChild(opt);
+  }
+  startLevelSelect.value = getStartLevel();
+}
+
+startLevelSelect.addEventListener('change', () => {
+  localStorage.setItem(START_LEVEL_KEY, startLevelSelect.value);
+});
+
+initStartLevelSelect();
+
+let board, current, next, score, lines, level, startLevel, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
 let powerUpPending, singlePending, linesToPower, piecesToPower, freezeLeft, activePower;
 
 const SKIN_KEY = 'tetris-skin';
@@ -275,6 +304,10 @@ function applyGravity() {
   }
 }
 
+function dropIntervalForLevel(lvl) {
+  return Math.max(100, 1000 - (lvl - 1) * 90);
+}
+
 function resolveBoard() {
   let total = 0;
   let tetris = false;
@@ -290,8 +323,8 @@ function resolveBoard() {
   }
   if (total) {
     lines += total;
-    level = Math.floor(lines / 10) + 1;
-    dropInterval = Math.max(100, 1000 - (level - 1) * 90);
+    level = startLevel + Math.floor(lines / 10);
+    dropInterval = dropIntervalForLevel(level);
   }
   return { total, tetris };
 }
@@ -618,13 +651,12 @@ function togglePause() {
   if (gameOver) return;
   paused = !paused;
   if (!paused) {
+    pauseMenu.classList.add('hidden');
     lastTime = performance.now();
     loop(lastTime);
   } else {
     cancelAnimationFrame(animId);
-    overlayTitle.textContent = 'PAUSA';
-    overlayScore.textContent = '';
-    overlay.classList.remove('hidden');
+    pauseMenu.classList.remove('hidden');
   }
 }
 
@@ -662,10 +694,11 @@ function init() {
   board = createBoard();
   score = 0;
   lines = 0;
-  level = 1;
+  startLevel = getStartLevel();
+  level = startLevel;
   paused = false;
   gameOver = false;
-  dropInterval = 1000;
+  dropInterval = dropIntervalForLevel(level);
   dropAccum = 0;
   lastTime = performance.now();
   powerUpPending = false;
@@ -678,12 +711,21 @@ function init() {
   spawn();
   updateHUD();
   overlay.classList.add('hidden');
+  pauseMenu.classList.add('hidden');
+  pauseControlsEl.classList.add('hidden');
+  controlsToggleBtn.setAttribute('aria-expanded', 'false');
   cancelAnimationFrame(animId);
   animId = requestAnimationFrame(loop);
 }
 
 document.addEventListener('keydown', e => {
-  if (e.code === 'KeyP') { togglePause(); return; }
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    if (gameOver) return;
+    if (e.code === 'Escape' && e.target === startLevelSelect) return;
+    e.preventDefault();
+    togglePause();
+    return;
+  }
   if (paused || gameOver) return;
   switch (e.code) {
     case 'ArrowLeft':
@@ -708,6 +750,17 @@ document.addEventListener('keydown', e => {
 });
 
 restartBtn.addEventListener('click', init);
+
+resumeBtn.addEventListener('click', () => {
+  if (paused) togglePause();
+});
+
+restartPauseBtn.addEventListener('click', init);
+
+controlsToggleBtn.addEventListener('click', () => {
+  const isHidden = pauseControlsEl.classList.toggle('hidden');
+  controlsToggleBtn.setAttribute('aria-expanded', String(!isHidden));
+});
 
 buildPowerLegend();
 init();
